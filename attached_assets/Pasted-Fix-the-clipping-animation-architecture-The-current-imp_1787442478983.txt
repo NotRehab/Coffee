@@ -1,0 +1,72 @@
+Fix the clipping animation architecture.
+
+The current implementation is wrong because clip-path is applied to the entire moving text strip and therefore travels with the text, creating a “slide eraser” effect.
+
+I want the clipping boundary to remain FIXED at the center, directly behind the T.
+
+Desired behavior
+
+Starting position:
+
+NO T REHAB
+
+Animation:
+
+NO → → → → → T ← ← ← ← ← REHAB
+
+Both words should physically travel inward toward the T using translateX().
+
+The T and its clipping/masking region remain completely stationary.
+
+As NO approaches the T from the left, it should disappear behind the fixed left edge of the T.
+
+As REHAB approaches the T from the right, it should disappear behind the fixed right edge of the T.
+
+Critical requirement
+
+DO NOT animate clip-path on the moving text element from inset(0) to inset(100%).
+
+That creates the unwanted traveling “eraser” effect.
+
+Instead, create a stationary center mask/container positioned exactly where the T is:
+
+NO → → → | [ FIXED T / MASK ] | ← ← ← REHAB
+
+The mask must stay fixed while the text moves underneath it.
+
+Use separate wrapper/container elements for the moving strips and the fixed clipping region. The moving text should be translated with:
+
+NO:     transform: translateX(...)
+REHAB:  transform: translateX(...)
+
+while the mask/overflow boundary never moves.
+
+Layering
+
+Use this visual layer order:
+
+TOP:     T
+         ↓
+         fixed center mask / overflow boundary
+         ↓
+BOTTOM:  moving NO + moving REHAB
+
+The T should remain visible throughout the animation.
+
+The moving words should travel underneath the T/mask and be progressively hidden only when they enter the fixed central T area.
+
+They must never emerge on the opposite side.
+
+Important
+
+The disappearance must look like:
+
+“text traveling into/behind a fixed T”
+
+NOT:
+
+“a horizontal eraser traveling across the text.”
+
+Keep the subtle motion blur during the translateX() movement, but do not use opacity fading.
+
+The clip/mask position must be fixed in screen/layout coordinates at the center. Only NO and REHAB move.

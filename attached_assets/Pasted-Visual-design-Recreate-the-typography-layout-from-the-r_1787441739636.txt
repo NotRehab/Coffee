@@ -1,0 +1,72 @@
+Visual design
+
+Recreate the typography layout from the reference:
+
+Large, extremely bold black typography.
+Text reads “NO T Rehab”.
+NO is on the left.
+T is the central fixed letter.
+Rehab is on the right.
+A thin vertical line runs through/behind the central area.
+Use an oversized bold sans-serif font similar to the reference.
+Keep the typography tightly spaced and allow the large letters to extend beyond the viewport if necessary.
+Background should be an off-white/cream color similar to the reference.
+Keep the small red text “COFFEE / RELEASE 01” at the top-left.
+Main animation
+
+The most important part is the typography animation.
+
+NO and Rehab must be separate animated elements. T must be a separate fixed element.
+
+At the beginning:
+
+NO T Rehab
+
+Then animate:
+
+NO → → → T ← ← ← Rehab
+
+NO moves horizontally from the left toward the T.
+Rehab moves horizontally from the right toward the T.
+The T never moves.
+The T must always appear visually in the foreground.
+As NO reaches the T, it should be clipped/sliced away by the T's area.
+As Rehab reaches the T, it should also be clipped/sliced away by the T's area.
+NO and Rehab must NOT pass through the T.
+They must NOT appear on the opposite side after reaching the T.
+They should progressively disappear as they enter the central T/mask area.
+Do NOT use a simple opacity fade.
+The disappearance must look like the text is physically sliding underneath/into a solid vertical boundary and being cut off.
+Final state
+
+After the animation completes, the result should essentially be:
+
+T
+
+with NO and Rehab completely hidden.
+
+The central T remains perfectly stationary and visible throughout the entire animation.
+
+Technical implementation
+Use separate DOM elements for NO, T, and Rehab.
+Use CSS transform: translateX() for the horizontal movement.
+Use overflow: hidden, clipping, masks, or an equivalent CSS technique to hide the moving text when it reaches the center.
+Give the T a higher z-index than the moving text.
+Do not move the T.
+Do not animate opacity for the main disappearance.
+Use smooth, polished easing such as cubic-bezier(...).
+Add subtle motion blur if it can be done cleanly with CSS.
+Make the animation responsive so it works on desktop and mobile.
+The animation should run automatically on page load.
+After completing, it can reset/replay smoothly.
+Important visual behavior
+
+Think of the central T as a fixed physical barrier/mask. The two text pieces are sliding toward it from opposite directions and are swallowed/cut off at the center. They never emerge from the other side.
+
+Do not interpret this as a normal text transition, fade, or text moving across the entire screen. It is specifically a two-sided inward text-slide + center clipping/masking animation.
+
+Code quality
+
+Keep the implementation simple and lightweight for the free Replit plan. Avoid unnecessary libraries or dependencies. Use plain HTML, CSS, and JavaScript unless a library is absolutely necessary.
+
+Build the working animation directly in the Replit project and make sure it runs without errors.

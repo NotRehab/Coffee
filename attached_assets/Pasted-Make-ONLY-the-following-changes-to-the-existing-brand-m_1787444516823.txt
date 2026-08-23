@@ -1,0 +1,190 @@
+Make ONLY the following changes to the existing brand-motion animation. Do not change any other part of the website.
+
+GOAL:
+The NO and Rehab text must travel inward toward the T and disappear exactly behind the left/right edges of the T.
+
+The final geometry must be:
+
+NO  → → → → │ T │ ← ← ← ←  Rehab
+             ↑   ↑
+          T left T right
+
+The clipping boundaries must be invisible. Do NOT create visible white lines, borders, overlays, masks, or guide lines.
+
+1. KEEP THE EXISTING T MEASUREMENT
+
+Keep this React measurement logic:
+
+const measureT = () => {
+  const motionRect = motion.getBoundingClientRect();
+  const tRect = t.getBoundingClientRect();
+
+  setTBounds({
+    left: tRect.left - motionRect.left,
+    right: tRect.right - motionRect.left,
+  });
+};
+
+Keep the ResizeObserver and window resize listener.
+
+Keep these CSS variables:
+
+'--t-left-px': `${tBounds.left}px`,
+'--t-right-px': `${tBounds.right}px`,
+
+2. CHANGE THE NO TRACK
+
+The NO track must be a fixed clipping window.
+
+Use:
+
+.brand-not-track {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--t-left-px);
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+The NO track itself must NEVER translate.
+
+The NO text inside it is what moves:
+
+.brand-not {
+  display: inline-block;
+  transform: translateX(...);
+}
+
+Keep the existing animation direction, duration, easing and blur values. Only make sure the transform is applied to .brand-not, NOT .brand-not-track.
+
+3. CHANGE THE REHAB TRACK
+
+The Rehab track must start EXACTLY at the right edge of T.
+
+Use:
+
+.brand-rehab-track {
+  position: absolute;
+  left: var(--t-right-px);
+  top: 0;
+  width: calc(100% - var(--t-right-px));
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+The Rehab track itself must NEVER translate.
+
+The Rehab text inside it is what moves:
+
+.brand-rehab {
+  display: inline-block;
+  transform: translateX(...);
+}
+
+Keep the existing animation direction, duration, easing and blur values. Only make sure the transform is applied to .brand-rehab, NOT .brand-rehab-track.
+
+4. REMOVE THE OLD CLIP-PATH SYSTEM
+
+Remove any clip-path rules currently used for:
+
+.brand-not
+.brand-rehab
+.brand-not-track
+.brand-rehab-track
+
+Do NOT use:
+
+clip-path: inset(...)
+
+for this animation anymore.
+
+The clipping must happen through:
+
+overflow: hidden
+
+on the two fixed tracks.
+
+5. REMOVE ALL VISIBLE CLIPPING LINES
+
+Delete/remove any:
+
+.brand-clip-guide
+.brand-clip-guide-left
+.brand-clip-guide-right
+
+elements, CSS, pseudo-elements, borders, background lines, or overlays that were previously being used to show the clipping boundary.
+
+There must be NO visible vertical line at either edge of T.
+
+The T itself is the only visual element at the center.
+
+6. KEEP THE T ABOVE EVERYTHING
+
+Keep the T fixed in exactly its current position.
+
+Use a higher z-index:
+
+.brand-t-mask {
+  position: absolute;
+  z-index: 20;
+}
+
+The T must NOT translate or animate.
+
+The tracks should be below the T.
+
+7. IMPORTANT: DO NOT CHANGE THE EXISTING T TYPOGRAPHY
+
+Do not change:
+
+font
+font-size
+font-weight
+letter-spacing
+position
+color
+line-height
+transform
+
+of the T.
+
+The existing rendered T determines the clipping boundaries.
+
+8. RESULT
+
+NO should move:
+
+NO → → → → → T
+
+and disappear exactly when its rightmost edge reaches the LEFT edge of T.
+
+Rehab should move:
+
+Rehab ← ← ← ← ← T
+
+and disappear exactly when its leftmost edge reaches the RIGHT edge of T.
+
+The words must NEVER travel through the T or appear on the opposite side.
+
+There should be no fade.
+
+There should be no opacity animation.
+
+There should be no visible eraser line.
+
+There should be no white patch.
+
+There should be no artificial overlay.
+
+The only disappearance mechanism should be the fixed track's:
+
+overflow: hidden;
+
+9. KEEP EVERYTHING ELSE UNCHANGED
+
+Do not modify the rest of the React application, shopping cart, products, hero, typography, layout, buttons, navigation, or other animations.
+
+Only fix the NO / T / Rehab animation and its clipping geometry.

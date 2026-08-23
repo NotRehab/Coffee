@@ -1,0 +1,299 @@
+FIX THE EXISTING BRAND TYPOGRAPHY ANIMATION ONLY. DO NOT CHANGE ANY OTHER PART OF THE WEBSITE.
+
+I have an existing React/TypeScript page with the brand animation containing NO, T, and Rehab. The current movement direction, timing, easing, and motion blur are already correct. I want you to fix ONLY the clipping/masking behavior.
+
+CURRENT DESIRED ANIMATION:
+
+NO  → → → → →  | T |  ← ← ← ← ←  Rehab
+
+NO must move from LEFT to RIGHT toward the T.
+Rehab must move from RIGHT to LEFT toward the T.
+The T must remain completely fixed in the center.
+NO and Rehab must never pass through the T or appear on the opposite side.
+
+The words should travel inward toward the T and disappear behind/under the T.
+
+IMPORTANT: DO NOT create a moving "eraser" effect.
+
+The current problem is that clip-path is being animated directly on the moving text strips, for example:
+
+NO:
+clip-path: inset(0 100% 0 0)
+
+Rehab:
+clip-path: inset(0 0 0 100%)
+
+This makes the clipping/wipe travel with the text and creates an unwanted horizontal eraser effect.
+
+REMOVE THAT APPROACH.
+
+Instead, create FIXED clipping containers around the moving text.
+
+THE CORRECT ARCHITECTURE IS:
+
+1. The outer NO clipping container is FIXED.
+2. The outer Rehab clipping container is FIXED.
+3. Only the actual NO and Rehab text inside those containers moves using translateX().
+4. The clipping boundaries never move.
+5. The T remains fixed above both moving text elements.
+6. The clipping boundaries must be positioned EXACTLY at the real rendered left and right edges of the T.
+
+VISUALLY:
+
+NO  → → → → → │ T │ ← ← ← ← ← Rehab
+               ↑   ↑
+               │   │
+            T.left T.right
+
+The left clipping boundary must be exactly the T's left edge.
+
+The right clipping boundary must be exactly the T's right edge.
+
+Do NOT use arbitrary pixel values.
+Do NOT use 50%.
+Do NOT hardcode the T width.
+Do NOT estimate the center.
+Do NOT create separate offsets.
+
+Use the actual rendered DOM dimensions of the T with getBoundingClientRect().
+
+The existing refs are:
+
+const brandMotionRef = useRef<HTMLHeadingElement>(null);
+const brandTRef = useRef<HTMLSpanElement>(null);
+
+Keep these refs.
+
+Calculate the T bounds relative to the brand-motion container like this:
+
+const motion = brandMotionRef.current;
+const t = brandTRef.current;
+
+if (!motion || !t) return;
+
+const motionRect = motion.getBoundingClientRect();
+const tRect = t.getBoundingClientRect();
+
+setTBounds({
+  left: tRect.left - motionRect.left,
+  right: tRect.right - motionRect.left,
+});
+
+This means:
+
+tBounds.left = exact rendered left edge of T
+tBounds.right = exact rendered right edge of T
+
+Keep the existing ResizeObserver and window resize handling so these values update automatically when the typography changes size or the viewport changes.
+
+THE HTML/REACT STRUCTURE SHOULD BE:
+
+<h1 ref={brandMotionRef} className="brand-motion ...">
+
+  <span
+    className="brand-not-track"
+    aria-hidden="true"
+    style={{
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: tBounds ? `${tBounds.left}px` : '0px',
+      height: '100%',
+      overflow: 'hidden',
+      pointerEvents: 'none',
+    }}
+  >
+    <span className="brand-not">
+      NO
+    </span>
+  </span>
+
+  <span
+    className="brand-rehab-track"
+    aria-hidden="true"
+    style={{
+      position: 'absolute',
+      left: tBounds ? `${tBounds.right}px` : '0px',
+      top: 0,
+      width: tBounds ? `calc(100% - ${tBounds.right}px)` : '0px',
+      height: '100%',
+      overflow: 'hidden',
+      pointerEvents: 'none',
+    }}
+  >
+    <span className="brand-rehab">
+      Rehab
+    </span>
+  </span>
+
+  <span
+    className="brand-t-mask"
+    aria-hidden="true"
+    style={{
+      position: 'absolute',
+      zIndex: 20,
+    }}
+  >
+    <span ref={brandTRef} className="brand-t">
+      T
+    </span>
+  </span>
+
+  <span className="brand-coffee" aria-hidden="true">
+    Coffee
+  </span>
+
+</h1>
+
+IMPORTANT CSS ARCHITECTURE:
+
+The TRACK elements must NOT move.
+
+DO NOT put translateX() on:
+
+.brand-not-track
+.brand-rehab-track
+
+Only the actual text elements move:
+
+.brand-not
+.brand-rehab
+
+For example:
+
+.brand-not {
+  transform: translateX(...);
+}
+
+.brand-rehab {
+  transform: translateX(...);
+}
+
+The exact existing translateX values/directions/timing should be preserved if they are already working.
+
+NO must use positive translateX values to move LEFT → RIGHT.
+
+Rehab must use negative translateX values to move RIGHT → LEFT.
+
+The clipping containers use:
+
+.brand-not-track {
+  overflow: hidden;
+}
+
+.brand-rehab-track {
+  overflow: hidden;
+}
+
+The T must remain above both moving strips:
+
+.brand-t-mask {
+  z-index: 20;
+}
+
+Do NOT animate the T.
+
+REMOVE the following existing guide elements completely:
+
+<span className="brand-clip-guide brand-clip-guide-left" aria-hidden="true" />
+<span className="brand-clip-guide brand-clip-guide-right" aria-hidden="true" />
+
+Also remove any CSS associated with:
+
+.brand-clip-guide
+.brand-clip-guide-left
+.brand-clip-guide-right
+
+Do NOT replace them with white/cream colored lines, rectangles, pseudo-elements, overlays, or fake eraser shapes.
+
+I do NOT want visible white patches.
+
+I do NOT want visible cream-colored masks.
+
+I do NOT want a separate vertical line cutting through the letters.
+
+The clipping should happen naturally because the moving text is inside the fixed overflow-hidden containers.
+
+THE IMPORTANT DIFFERENCE IS:
+
+WRONG:
+
+moving text + moving clip-path
+= traveling eraser effect
+
+CORRECT:
+
+fixed overflow container
++
+moving text inside it
+=
+text travels inward and gets clipped at a fixed boundary
+
+The final effect should look like the text is physically sliding underneath the fixed T:
+
+NO ─────────→ │ T │ ←───────── Rehab
+
+The T stays fixed.
+
+The clipping boundaries stay fixed.
+
+Only NO and Rehab move.
+
+NO disappears when it reaches the exact LEFT edge of T.
+
+Rehab disappears when it reaches the exact RIGHT edge of T.
+
+Neither word can emerge on the opposite side.
+
+There must be NO opacity fade.
+
+Keep the existing subtle blur/motion blur during movement, but do not use blur to hide the clipping problem.
+
+RESPONSIVE REQUIREMENT:
+
+Use getBoundingClientRect() + ResizeObserver so the clipping boundaries always follow the actual T dimensions.
+
+If the font size changes, viewport changes, browser zoom changes, or the T changes width, the clipping boundaries must automatically move to remain exactly aligned with the T's actual rendered edges.
+
+For debugging only, if necessary, temporarily make the two clipping boundaries 1px red so their positions can be verified. But the final implementation must not show any artificial red, white, cream, or other guide lines.
+
+DO NOT MODIFY ANYTHING ELSE IN THE PROJECT.
+
+Do not change:
+- page layout
+- typography
+- colors
+- T position
+- T size
+- animation timing
+- animation direction
+- easing
+- motion blur
+- navigation
+- shopping/cart functionality
+- other sections
+- React logic unrelated to this animation
+
+ONLY fix the clipping/masking implementation for NO and Rehab.
+
+FINAL REQUIRED BEHAVIOR:
+
+Initial:
+NO                 T                 Rehab
+
+During animation:
+NO → → → → →       T       ← ← ← ← ← Rehab
+
+Near the end:
+NO → → →           T           ← ← ← Rehab
+
+Final:
+                    T
+
+NO and Rehab must be completely hidden.
+
+The words must never appear on the opposite side of T.
+
+The clipping boundary must be EXACTLY coincident with the actual rendered left/right edges of T.
+
+Implement the fix directly in the existing code and make sure TypeScript/React has no errors.

@@ -1,0 +1,95 @@
+Remove the remaining legacy brand-layer animation references from the CSS.
+
+The current brand animation no longer uses:
+merge-left-into-t
+merge-right-into-t
+brand-layer-0 > span
+brand-layer-0 b
+brand-layer-2
+brand-layer-3
+
+Therefore remove the animation assignments from these phase rules.
+
+REMOVE:
+
+.brand-phase-1 .brand-layer-0 > span:last-child {
+  z-index: 1;
+  animation: merge-right-into-t 420ms cubic-bezier(.16, 1, .3, 1) both;
+  animation: none;
+}
+
+Remove the entire rule if it is only controlling the old brand animation.
+
+REMOVE:
+
+.brand-phase-2 .brand-layer-0 > span:first-child {
+  z-index: 1;
+  animation: merge-left-into-t 620ms cubic-bezier(.16, 1, .3, 1) both;
+  animation: none;
+}
+
+REMOVE:
+
+.brand-phase-2 .brand-layer-0 > span:last-child {
+  z-index: 1;
+  animation: merge-right-into-t 360ms cubic-bezier(.16, 1, .3, 1) both;
+  animation: none;
+}
+
+Also remove any remaining references anywhere in CSS to:
+
+merge-left-into-t
+merge-right-into-t
+
+Remove the old `.brand-layer-0`, `.brand-layer-2`, `.brand-layer-3` phase rules IF they only exist for the previous brand animation.
+
+Do NOT remove unrelated `.brand-phase-*` rules if they control another working part of the page.
+
+IMPORTANT:
+The new brand animation is NOT phase-layer based.
+
+The ONLY active brand elements should be:
+
+.brand-not-track
+.brand-not
+.brand-rehab-track
+.brand-rehab
+.brand-t-mask
+.brand-t
+.brand-coffee
+
+The architecture must be:
+
+NO text
+  ↓
+.brand-not
+  ↓
+fixed .brand-not-track
+  ↓
+overflow:hidden at T.left
+
+T
+
+overflow:hidden at T.right
+  ↑
+fixed .brand-rehab-track
+  ↑
+.brand-rehab
+  ↑
+Rehab text
+
+The tracks stay fixed.
+
+Only `.brand-not` and `.brand-rehab` translate.
+
+Do not use clip-path.
+
+Do not use opacity to erase NO or Rehab.
+
+Do not use the old merge keyframes.
+
+Do not add visible clipping lines or overlays.
+
+Keep the existing timing/easing/blur of the current NO and Rehab movement.
+
+After cleanup, search the CSS for `merge-left-into-t`, `merge-right-into-t`, and `clip-path`. There should be ZERO references to those old brand animation mechanisms.

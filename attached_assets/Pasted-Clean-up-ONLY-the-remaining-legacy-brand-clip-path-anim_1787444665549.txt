@@ -1,0 +1,90 @@
+Clean up ONLY the remaining legacy brand clip-path/animation CSS.
+
+1. Remove the `clip-path` property from the `.brand-motion .brand-not` rule around line 426.
+
+If it currently has something like:
+
+transition: transform ..., clip-path ...;
+
+change it so the transition contains ONLY the properties actually needed for the movement/blur animation.
+
+Do NOT transition clip-path anymore.
+
+2. Remove the equivalent legacy `clip-path` transition/property from the Rehab rule as well.
+
+3. Remove the old brand animation keyframes that exist only to animate `clip-path`, including any keyframes specifically used for the old NO/Rehab eraser effect.
+
+Do NOT remove keyframes that are still used for transform, blur, or other unrelated animations.
+
+4. Search the entire CSS file for:
+
+clip-path
+
+and remove only the remaining instances belonging to the old NO/Rehab brand animation.
+
+There should be ZERO `clip-path` usage for the NO/Rehab animation after this cleanup.
+
+5. IMPORTANT: Do NOT restore opacity fading.
+
+The NO and Rehab elements must remain:
+
+opacity: 1;
+
+Do not use opacity to make either strip disappear.
+
+If an old `.brand-motion` state selector is setting opacity to 0 on `.brand-not` or `.brand-rehab`, override/remove that rule so the inner text remains visible and is clipped only by its fixed parent track.
+
+Use:
+
+.brand-motion .brand-not,
+.brand-motion .brand-rehab {
+  opacity: 1 !important;
+}
+
+6. The movement must still happen ONLY on the inner text:
+
+.brand-not
+.brand-rehab
+
+NOT on:
+
+.brand-not-track
+.brand-rehab-track
+
+7. The tracks remain fixed clipping containers:
+
+.brand-not-track {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--t-left-px);
+  height: 100%;
+  overflow: hidden;
+}
+
+.brand-rehab-track {
+  position: absolute;
+  left: var(--t-right-px);
+  top: 0;
+  width: calc(100% - var(--t-right-px));
+  height: 100%;
+  overflow: hidden;
+}
+
+8. The T remains fixed above the tracks with its existing typography and position.
+
+9. Do NOT add any visible borders, guide lines, white overlays, pseudo-element erasers, masks, or background patches.
+
+10. Final animation architecture must be:
+
+FIXED CLIPPING WINDOW
+        ↓
+MOVING TEXT
+        ↓
+T sits above both
+
+NO  → → → │ T │ ← ← ←  Rehab
+
+The clipping boundary must be exactly the rendered T's left/right edges, but the boundary itself must be invisible.
+
+Do not change anything else in the website.
