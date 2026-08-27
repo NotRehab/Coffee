@@ -1,500 +1,612 @@
-import { type CSSProperties, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowRight, ArrowUp, Check, Minus, Plus, ShoppingBag, X } from 'lucide-react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ErrorBoundary } from '@/components/error-boundary';
-import { Toaster } from '@/components/ui/toaster';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import NotFound from '@/pages/not-found';
-import { Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { ArrowDown, ShoppingBag } from 'lucide-react';
 
-type Product = {
-  id: string;
-  name: string;
-  note: string;
-  price: number;
-  origin: string;
-  release: string;
-  process: string;
-};
-
-type BagItem = Product & { quantity: number };
-
-const queryClient = new QueryClient();
-
-const products: Product[] = [
+const products = [
   {
-    id: 'night-vector',
-    name: 'Pissente Pour Over',
-    note: 'citrus / cacao / walnut',
+    id: 1,
+    name: "PISSENTE POUR OVER",
+    note: "Citrus • Cacao • Walnut",
     price: 28,
-    origin: 'Colombia / washed',
-    release: 'R.01',
-    process: 'light roast',
+    origin: "Colombia • Washed",
+    image: "https://picsum.photos/id/1015/2000/1400",
+    statement: "good coffee asks for a little time.",
+    info: [
+      { label: "ALTITUDE", value: "1,900 m" },
+      { label: "VARIETAL", value: "Castillo" },
+      { label: "ROAST", value: "Light" },
+      { label: "YIELD", value: "Small lot" },
+    ],
   },
   {
-    id: 'still-signal',
-    name: 'Second Bloom',
-    note: 'plum / tea / sandalwood',
+    id: 2,
+    name: "SECOND BLOOM",
+    note: "Plum • Tea • Sandalwood",
     price: 30,
-    origin: 'Ethiopia / natural',
-    release: 'R.02',
-    process: 'light roast',
+    origin: "Ethiopia • Natural",
+    image: "https://picsum.photos/id/106/2000/1400",
+    statement: "begin where the water meets the ground.",
+    info: [
+      { label: "ALTITUDE", value: "2,200 m" },
+      { label: "VARIETAL", value: "Heirloom" },
+      { label: "ROAST", value: "Light" },
+      { label: "YIELD", value: "Natural" },
+    ],
   },
   {
-    id: 'low-orbit',
-    name: 'After Rain',
-    note: 'fig / molasses / cedar',
+    id: 3,
+    name: "AFTER RAIN",
+    note: "Fig • Molasses • Cedar",
     price: 29,
-    origin: 'Brazil / pulped natural',
-    release: 'R.03',
-    process: 'medium-light',
+    origin: "Brazil • Pulped Natural",
+    image: "https://picsum.photos/id/201/2000/1400",
+    statement: "a small ritual can hold a whole morning.",
+    info: [
+      { label: "ALTITUDE", value: "1,100 m" },
+      { label: "VARIETAL", value: "Catuai" },
+      { label: "ROAST", value: "Medium" },
+      { label: "YIELD", value: "Pulped" },
+    ],
   },
 ];
 
-const statements = [
-  'good coffee asks for a little time.',
-  'begin where the water meets the ground.',
-  'a small ritual can hold a whole morning.',
-  'keep what is essential. let the rest go.',
-  'notice what changes when you slow down.',
-  'arrive at the first clear hour.',
-];
+const noise =
+  "data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E";
 
-const brandMotion = [
-  { text: 'NOT Rehab Coffee', label: 'the full name' },
-  { text: '!RehabCoffee', label: 'the signal emerges' },
-  { text: 'TCoffee', label: 'the coffee remains' },
-];
-const ritualTotal = 4;
+// Shared vanishing line — Coffee sits just right of it so ! lands under the clip.
+const BRAND_CLIP = "4.6em";
+const BRAND_STEP_X = "4.555em";
+const BRAND_BANG_X = "4.35em";
+const BRAND_COFFEE_X = "4.72em";
+const BRAND_COFFEE_Y = "0.92em";
 
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-}
+// Start a little closer, then teaser, then full merge into !, then ! falls.
+const REST_NOT = "1.15em";
+const REST_REHAB = "-1.35em";
+const TEASER_NOT = "1.7em";
+const TEASER_REHAB = "-2.05em";
+const FULL_NOT = "3.55em";
+const FULL_REHAB = "-4.35em";
 
-function Router() {
-  return (
-    <RoutedErrorBoundary>
-      <Switch>
-        <Route path="/" component={Home} />
-        <Route component={NotFound} />
-      </Switch>
-    </RoutedErrorBoundary>
-  );
-}
+export default function App() {
+  const [phase, setPhase] = useState(0); // 0 = hero, 1 = catalog
+  const [bag, setBag] = useState<number[]>([]);
+  // 0 rest → 1 teaser → 2 merge into ! (top) → 3 ! falls to Coffee → 4 catalog
+  const [ritual, setRitual] = useState(0);
+  const catalogRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLElement>(null);
+  const wheelLock = useRef(false);
+  const bangSettledRef = useRef(false);
+  const [bangSettled, setBangSettled] = useState(false);
 
-function RoutedErrorBoundary({ children }: { children: ReactNode }) {
-  const [location] = useLocation();
-  return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
-}
-
-function Home() {
-  const [clicks, setClicks] = useState(0);
-  const [tBounds, setTBounds] = useState<{ left: number; right: number } | null>(null);
-  const brandMotionRef = useRef<HTMLHeadingElement>(null);
-  const brandTRef = useRef<HTMLSpanElement>(null);
-  const [awake, setAwake] = useState(false);
-  const [pulse, setPulse] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [bag, setBag] = useState<BagItem[]>([]);
-  const [toast, setToast] = useState('');
-  const [email, setEmail] = useState('');
-  const [signedUp, setSignedUp] = useState(false);
-  const unlocked = clicks >= ritualTotal;
-  const brandState = brandMotion[clicks >= ritualTotal ? brandMotion.length - 1 : 0];
-  const brandPhase = Math.min(clicks, ritualTotal);
-  const total = useMemo(() => bag.reduce((sum, item) => sum + item.price * item.quantity, 0), [bag]);
-  const itemCount = useMemo(() => bag.reduce((sum, item) => sum + item.quantity, 0), [bag]);
+  const addToBag = (id: number) => setBag((b) => [...b, id]);
 
   useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(''), 2700);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
+    if (ritual >= 4) setPhase(1);
+  }, [ritual]);
 
-  useEffect(() => {
-    if (!pulse) return;
-    const timer = window.setTimeout(() => setPulse(false), 700);
-    return () => window.clearTimeout(timer);
-  }, [pulse]);
-
-  useEffect(() => {
-    if (clicks >= ritualTotal) return;
-    const motion = brandMotionRef.current;
-    const t = brandTRef.current;
-    if (!motion || !t) return;
-
-    const measureT = () => {
-      const motionRect = motion.getBoundingClientRect();
-      const tRect = t.getBoundingClientRect();
-      setTBounds({
-        left: tRect.left - motionRect.left,
-        right: tRect.right - motionRect.left,
-      });
-    };
-
-    measureT();
-    const observer = new ResizeObserver(measureT);
-    observer.observe(motion);
-    observer.observe(t);
-    window.addEventListener('resize', measureT);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', measureT);
-    };
-  }, [clicks]);
-
-  const handleBeanClick = () => {
-    if (unlocked) return;
-    setAwake(true);
-    setPulse(true);
-    setClicks((current) => current + 1);
-  };
-
-  const addToBag = (product: Product) => {
-    setBag((current) => {
-      const existing = current.find((item) => item.id === product.id);
-      if (existing) {
-        return current.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item);
-      }
-      return [...current, { ...product, quantity: 1 }];
+  const advanceRitual = useCallback(() => {
+    setRitual((r) => {
+      // Wait for the fallen ! to settle before leaving for catalog
+      if (r === 3 && !bangSettledRef.current) return 3;
+      return Math.min(r + 1, 4);
     });
-    setToast(`${product.name} added / ${product.release}`);
-  };
+  }, []);
 
-  const removeFromBag = (id: string) => setBag((current) => current.filter((item) => item.id !== id));
-  const changeQuantity = (id: string, delta: number) => {
-    setBag((current) => current.flatMap((item) => {
-      if (item.id !== id) return [item];
-      const quantity = item.quantity + delta;
-      return quantity > 0 ? [{ ...item, quantity }] : [];
-    }));
-  };
+  useEffect(() => {
+    if (phase !== 0) return;
+    const el = heroRef.current;
+    if (!el) return;
+    const onWheel = (e: Event) => {
+      const we = e as globalThis.WheelEvent;
+      we.preventDefault();
+      if (wheelLock.current) return;
+      if (Math.abs(we.deltaY) < 10) return;
+      wheelLock.current = true;
+      advanceRitual();
+      window.setTimeout(() => {
+        wheelLock.current = false;
+      }, 520);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [phase, advanceRitual]);
 
-  const submitSignup = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (email.trim()) setSignedUp(true);
-  };
+  const notX = ritual === 0 ? REST_NOT : ritual === 1 ? TEASER_NOT : FULL_NOT;
+  const rehabX = ritual === 0 ? REST_REHAB : ritual === 1 ? TEASER_REHAB : FULL_REHAB;
+  // Words stay visible while they squash into ! (ritual 2), gone once ! exists
+  const merging = ritual >= 2;
+  const falling = ritual >= 3;
+
+  useEffect(() => {
+    if (ritual < 3) {
+      setBangSettled(false);
+      bangSettledRef.current = false;
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setBangSettled(true);
+      bangSettledRef.current = true;
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [ritual]);
+
+  const hint =
+    ritual === 0
+      ? "click or scroll — they want to move"
+      : ritual === 1
+        ? "again — let them meet"
+        : ritual === 2
+          ? "scroll — drop the signal"
+          : bangSettled
+            ? "scroll — the catalog rises"
+            : "watch it settle";
 
   return (
-    <main className="page-shell noise">
-      <header className="site-nav">
-        <a href="#top" className="wordmark" data-testid="link-home">
-          <span className="wordmark-mark" aria-hidden="true">I</span>
-          <span className="wordmark-main">NOTrehab Coffee</span>
-          <span className="wordmark-sub">a notrehab object / 01</span>
-        </a>
-        <nav className="nav-links" aria-label="Main navigation">
-          <a
-            href={unlocked ? '#collection' : '#top'}
-            onClick={(event) => {
-              if (!unlocked) {
-                event.preventDefault();
-                setAwake(true);
-                setToast('Six activations open the collection');
-              }
-            }}
-            data-testid="link-shop"
-          >
-            Collection
-          </a>
-          <a href="#journal" data-testid="link-journal">Notes</a>
-          <button className="nav-cart" onClick={() => setCartOpen(true)} aria-expanded={cartOpen} aria-controls="shopping-bag" data-testid="button-open-bag">
-            Bag <span className="cart-count" data-testid="text-cart-count">{itemCount}</span>
-          </button>
-        </nav>
-      </header>
+    <div className="relative font-sans">
+      <div
+        className="fixed inset-0 z-[100] pointer-events-none opacity-[0.03] mix-blend-multiply"
+        style={{ backgroundImage: `url(${noise})` }}
+      />
 
-      <section className="hero" id="top" aria-label="NOT coffee entry">
-        <div className="hero-meta eyebrow">
-          <span><strong>NOTrehab Coffee</strong> — object archive</span>
-          <span>Brooklyn · New York</span>
-        </div>
-        <div className="hero-title">
-          <p className="hero-overline eyebrow">coffee / release 01</p>
-          <h1
-            ref={brandMotionRef}
-            className={`brand-motion brand-phase-${brandPhase}`}
-            aria-label={brandState.text}
-            style={tBounds ? {
-              '--t-left-px': `${tBounds.left}px`,
-              '--t-right-px': `${tBounds.right}px`,
-            } as CSSProperties : undefined}
+      <AnimatePresence mode="wait">
+        {phase === 0 && (
+          <motion.section
+            key="hero"
+            ref={heroRef}
+            initial={{ opacity: 0, y: 0 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{
+              opacity: 0,
+              y: "-100vh",
+              transition: { duration: 0.42, ease: [0.4, 0, 0.2, 1] },
+            }}
+            transition={{ duration: 0.7, ease: [0.23, 1, 0.32, 1] }}
+            className="min-h-screen flex flex-col items-center justify-center relative bg-[#f2f0ea] overflow-hidden cursor-pointer select-none"
+            onClick={advanceRitual}
           >
-            <span
-              className="brand-not-track"
-              aria-hidden="true"
-              style={{
-                width: tBounds ? `${tBounds.left}px` : '0px',
+            {[...Array(14)].map((_, i) => (
+              <motion.span
+                key={i}
+                className="absolute rounded-full bg-[#684837]/30"
+                style={{
+                  width: 3 + (i % 4) * 2,
+                  height: 3 + (i % 4) * 2,
+                  left: `${(i * 7.3) % 100}%`,
+                  top: `${(i * 13.7) % 100}%`,
+                }}
+                animate={{ y: [0, -40, 0], opacity: [0.2, 0.6, 0.2] }}
+                transition={{ duration: 6 + (i % 5), repeat: Infinity, ease: "easeInOut" }}
+              />
+            ))}
+
+            <div className="text-center z-10 w-full px-6 pointer-events-none">
+              <p className="mb-8 text-xs tracking-[6px] font-mono text-[#d94f2b] uppercase">
+                Move with intent
+              </p>
+
+              <div
+                className="relative mx-auto font-black tracking-[-0.08em] text-[#12110f]"
+                style={{
+                  fontSize: "clamp(2.6rem, 12vw, 8.5rem)",
+                  lineHeight: 0.78,
+                  width: "9.2em",
+                  height: "1.78em",
+                }}
+              >
+                {/* LEFT track — clips at shared line. NOT rests on the far left. */}
+                <div
+                  className="absolute left-0 top-0 z-[1] overflow-hidden"
+                  style={{ width: BRAND_CLIP, height: "0.86em" }}
+                >
+                  <motion.span
+                    initial={{ opacity: 0, x: "0.6em" }}
+                    animate={{
+                      // Stay visible while sliding in; squash into the ! instead of vanishing first
+                      opacity: merging ? 0 : 1,
+                      x: notX,
+                      scaleX: merging ? 0.08 : 1,
+                      color: merging ? "#d94f2b" : "#12110f",
+                    }}
+                    transition={{
+                      opacity: {
+                        duration: merging ? 0.45 : 0.7,
+                        delay: merging ? 0.35 : 0.08,
+                      },
+                      scaleX: {
+                        duration: merging ? 0.55 : 0.3,
+                        delay: merging ? 0.15 : 0,
+                        ease: [0.4, 0, 0.2, 1],
+                      },
+                      color: { duration: 0.35, delay: merging ? 0.1 : 0 },
+                      x: {
+                        type: "spring",
+                        stiffness: merging ? 130 : ritual === 1 ? 260 : 150,
+                        damping: merging ? 15 : ritual === 1 ? 24 : 17,
+                        mass: 0.85,
+                      },
+                    }}
+                    className="absolute left-0 top-0 origin-right whitespace-nowrap"
+                  >
+                    NOT
+                  </motion.span>
+                </div>
+
+                {/* RIGHT track — same clip line. REHAB starts inset from the far right. */}
+                <div
+                  className="absolute top-0 z-[1] overflow-hidden"
+                  style={{
+                    left: BRAND_CLIP,
+                    width: `calc(100% - ${BRAND_CLIP})`,
+                    height: "0.86em",
+                  }}
+                >
+                  <motion.span
+                    initial={{ opacity: 0, x: "-0.6em" }}
+                    animate={{
+                      opacity: merging ? 0 : 1,
+                      x: rehabX,
+                      scaleX: merging ? 0.08 : 1,
+                      color: merging ? "#d94f2b" : "#12110f",
+                    }}
+                    transition={{
+                      opacity: {
+                        duration: merging ? 0.45 : 0.7,
+                        delay: merging ? 0.35 : 0.08,
+                      },
+                      scaleX: {
+                        duration: merging ? 0.55 : 0.3,
+                        delay: merging ? 0.15 : 0,
+                        ease: [0.4, 0, 0.2, 1],
+                      },
+                      color: { duration: 0.35, delay: merging ? 0.1 : 0 },
+                      x: {
+                        type: "spring",
+                        stiffness: merging ? 130 : ritual === 1 ? 260 : 150,
+                        damping: merging ? 15 : ritual === 1 ? 24 : 17,
+                        mass: 0.85,
+                      },
+                    }}
+                    className="absolute top-0 origin-left whitespace-nowrap"
+                    style={{ right: 0 }}
+                  >
+                    REHAB
+                  </motion.span>
+                </div>
+
+                {/* Coffee — already placed */}
+                <motion.span
+                  initial={{ opacity: 0, y: "0.1em" }}
+                  animate={{ opacity: 1, y: "0em" }}
+                  transition={{ duration: 0.9, delay: 0.15, ease: [0.23, 1, 0.32, 1] }}
+                  className="absolute z-[2] whitespace-nowrap"
+                  style={{ left: BRAND_COFFEE_X, top: BRAND_COFFEE_Y }}
+                >
+                  COFFEE
+                </motion.span>
+
+                {/* NOT+REHAB merge into ! on the clip, then ! falls to Coffee */}
+                <MergeFallBang merged={merging} falling={falling} />
+              </div>
+
+              <motion.p
+                animate={{ opacity: bangSettled ? 1 : 0 }}
+                transition={{ duration: 0.5 }}
+                className="mt-8 text-sm tracking-[8px] font-mono text-[#12110f]/50 uppercase"
+              >
+                ! Coffee — the signal remains
+              </motion.p>
+            </div>
+
+            <div className="absolute bottom-16 flex flex-col items-center gap-3 text-xs tracking-[4px] font-mono text-[#12110f]/70 pointer-events-none">
+              <motion.span
+                animate={{ y: [0, 8, 0] }}
+                transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+              >
+                <ArrowDown size={18} />
+              </motion.span>
+              <span className="text-center text-[9px] tracking-[3px] opacity-70 uppercase">
+                {hint}
+              </span>
+            </div>
+          </motion.section>
+        )}
+
+        {phase === 1 && (
+          <motion.div
+            key="catalog"
+            initial={{ opacity: 0, y: "40vh" }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="relative"
+          >
+            <div className="fixed top-8 right-8 z-50 flex items-center gap-3 text-xs tracking-widest font-mono">
+              <button
+                onClick={() => {
+                  setPhase(0);
+                  setRitual(0);
+                }}
+                className="text-[#12110f]/60 hover:text-[#d94f2b] transition-colors"
+              >
+                ← RITUAL
+              </button>
+              <span className="flex items-center gap-2 text-[#12110f]">
+                <ShoppingBag size={16} /> {bag.length}
+              </span>
+            </div>
+
+            <div ref={catalogRef} className="relative">
+              {products.map((product, index) => (
+                <CatalogSlide
+                  key={product.id}
+                  product={product}
+                  index={index}
+                  total={products.length}
+                  onAdd={() => addToBag(product.id)}
+                />
+              ))}
+              <FeedbackSlide />
+            </div>
+
+            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 text-[10px] tracking-[4px] font-mono text-[#12110f]/50 uppercase">
+              Scroll — the catalog is the scroll
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/**
+ * Ritual 2: NOT + REHAB squash into an orange ! on the clip line (top).
+ * Ritual 3: that same ! falls straight down and settles beside Coffee.
+ */
+function MergeFallBang({
+  merged,
+  falling,
+}: {
+  merged: boolean;
+  falling: boolean;
+}) {
+  // Formed at top while words merge; then drops
+  const show = merged;
+  const atBottom = falling;
+
+  return (
+    <motion.span
+      className="absolute z-[4] text-[#d94f2b] font-black"
+      style={{ left: BRAND_BANG_X }}
+      initial={false}
+      animate={
+        !show
+          ? { opacity: 0, scale: 0.2, y: "0.05em" }
+          : !atBottom
+            ? { opacity: 1, scale: 1, y: "0em" }
+            : { opacity: 1, scale: 1, y: BRAND_COFFEE_Y }
+      }
+      transition={
+        !show
+          ? { duration: 0.15 }
+          : !atBottom
+            ? {
+                // Born from the merge — grows as the words squash in
+                opacity: { duration: 0.35, delay: 0.28 },
+                scale: {
+                  type: "spring",
+                  stiffness: 380,
+                  damping: 16,
+                  mass: 0.7,
+                  delay: 0.22,
+                },
+                y: { duration: 0.2 },
+              }
+            : {
+                // Fall + settle
+                y: { type: "spring", stiffness: 130, damping: 11, mass: 1.15 },
+                scale: { type: "spring", stiffness: 260, damping: 14 },
+                opacity: { duration: 0.1 },
+              }
+      }
+    >
+      !
+    </motion.span>
+  );
+}
+
+function FeedbackSlide() {
+  const [note, setNote] = useState("");
+  const [sent, setSent] = useState(false);
+
+  return (
+    <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-[#12110f] text-[#f2f0ea] px-8">
+      <div className="absolute right-8 top-8 text-[18vw] font-black text-white/5 leading-none select-none">
+        !!
+      </div>
+
+      <div className="max-w-2xl w-full space-y-10 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-15%" }}
+          transition={{ duration: 0.9, ease: [0.23, 1, 0.32, 1] }}
+        >
+          <p className="text-xs tracking-[6px] font-mono text-[#d94f2b] uppercase mb-6">
+            Last slide
+          </p>
+          <h2 className="text-5xl md:text-7xl font-black leading-[0.9] tracking-tighter">
+            tell us how
+            <br />
+            was it!
+          </h2>
+          <p className="mt-6 font-serif italic text-white/50 text-lg">
+            a cup, a ritual, a small signal — leave a note if you felt something.
+          </p>
+        </motion.div>
+
+        <AnimatePresence mode="wait">
+          {!sent ? (
+            <motion.form
+              key="form"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              className="space-y-6"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!note.trim()) return;
+                setSent(true);
               }}
             >
-              <span className="brand-not">NO</span>
-            </span>
-            <span
-              className="brand-rehab-track"
-              aria-hidden="true"
-              style={tBounds ? {
-                left: `${tBounds.right}px`,
-                width: `calc(100% - ${tBounds.right}px)`,
-              } : undefined}
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={4}
+                placeholder="it tasted like…"
+                className="w-full bg-transparent border border-white/25 focus:border-[#d94f2b] outline-none p-5 text-lg font-serif italic placeholder:text-white/30 resize-none"
+              />
+              <button
+                type="submit"
+                className="px-10 py-5 bg-[#d94f2b] text-[#f2f0ea] text-xs tracking-widest font-mono hover:bg-[#f2f0ea] hover:text-[#12110f] transition-colors"
+              >
+                SEND THE SIGNAL
+              </button>
+            </motion.form>
+          ) : (
+            <motion.div
+              key="thanks"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4"
             >
-              <span className="brand-rehab">Rehab</span>
-            </span>
-            <span className="brand-t-mask" aria-hidden="true">
-              <span ref={brandTRef} className="brand-t">T</span>
-            </span>
-            <span className="brand-coffee" aria-hidden="true">Coffee</span>
-          </h1>
-          <p>Pissente Pour Over — for the first clear hour</p>
-        </div>
-        <p className="hero-side-note">A small coffee practice from the people behind notrehab.com. Touch the object when you are ready.</p>
-        <div className="route-diagram" aria-hidden="true">
-          <svg viewBox="0 0 132 108">
-            <path d="M4 86 C28 86, 26 22, 58 28 S86 89, 126 12" />
-            <path d="M4 64 L25 64 L35 47 L62 47" />
-            <circle cx="4" cy="86" r="3" /><circle cx="58" cy="28" r="3" /><circle cx="126" cy="12" r="3" />
-          </svg>
-           <span className="route-label mono">ritual / 06 pauses</span>
-        </div>
-        <button
-          className={`bean-stage ${awake ? 'is-awake' : ''} ${pulse ? 'is-pulsing' : ''} ${unlocked ? 'is-revealed' : ''}`}
-          onMouseEnter={() => setAwake(true)}
-          onMouseLeave={() => setAwake(false)}
-          onClick={handleBeanClick}
-           aria-label={unlocked ? 'Coffee collection revealed below' : `Activate coffee ritual, moment ${Math.min(clicks + 1, ritualTotal)} of ${ritualTotal}`}
-          aria-describedby="bean-instruction"
-          data-testid="button-awaken-bean"
-        >
-          <span className="bean" />
-          {!unlocked && <span className="bean-hint">{awake ? 'click to continue' : 'hover / click to begin'}</span>}
-          {clicks > 0 && !unlocked && <span className="statement" key={clicks}>{statements[clicks - 1]}</span>}
-        </button>
-        <p className="bean-instruction eyebrow" id="bean-instruction" aria-live="polite">
-          {unlocked ? 'Collection unlocked / scroll to inspect the objects.' : `${clicks} of ${ritualTotal} activations / ${brandState.label}`}
-        </p>
-        <div className="hero-coordinate eyebrow">40° 42' 46" N / 74° 00' 21" W</div>
-        <div className="hero-index eyebrow"><strong>{String(Math.min(clicks + 1, ritualTotal)).padStart(2, '0')}</strong> / 04</div>
-        <div className="click-progress" aria-label={`${clicks} of ${ritualTotal} activations revealed`}>
-          <span className="progress-label eyebrow">activate</span>
-          {statements.map((statement, index) => <span className={`progress-dot ${clicks > index ? 'active' : ''}`} key={statement} />)}
-        </div>
-        <ArrowDown size={15} strokeWidth={1} className="absolute bottom-6 left-1/2 -translate-x-1/2" aria-hidden="true" />
-      </section>
-
-      {unlocked && (
-        <section className="shop-reveal" id="collection" aria-label="Coffee releases">
-          <div className="shop-header">
-            <div>
-              <span className="eyebrow field-marker">The collection / released</span>
-              <h2>Three <span>objects.</span></h2>
-            </div>
-            <p className="shop-note"><strong>From the white room</strong><br />Roasted in small lots and released when ready. Three coffees with a clear point of view, made for the pleasure of staying a little longer.</p>
-          </div>
-          <div className="product-grid">
-            {products.map((product, index) => <ProductCard key={product.id} product={product} featured={index === 0} onAdd={addToBag} />)}
-          </div>
-        </section>
-      )}
-
-      <section className="section section-rule manifesto" id="about">
-        <div><span className="eyebrow field-marker">A note on making / 00</span></div>
-        <div className="manifesto-copy">
-          <h2>Make room<br />to <em>arrive.</em></h2>
-          <p>NOT coffee is an exercise in the useful pause. We look for coffees with a clear point of view, roast them with restraint, then let the object become quiet enough for the cup to speak.</p>
-          <span className="small-note">No performance required.<br />Small lots / clear labels.<br />Roasted in Brooklyn, NY.</span>
-        </div>
-      </section>
-
-      <section className="ritual-band" id="ritual">
-        <div className="section">
-          <div className="ritual-layout">
-            <div>
-              <span className="eyebrow field-marker">The morning ritual / 01</span>
-              <h2 className="ritual-title">A cup is<br />a <em>waypoint.</em></h2>
-            </div>
-            <div className="ritual-list">
-              {[
-                ['01', 'Start with the water', 'Fresh, soft water is the quiet infrastructure. Give it a clean surface to work from.'],
-                ['02', 'Measure without fuss', 'A 1:16 ratio is a place to begin. The cup is data; your attention is the instrument.'],
-                ['03', 'Wait for the bloom', 'Forty-five seconds. Notice what rises, then let the route continue.'],
-                ['04', 'Drink before it cools', 'No optimization at the finish line. The best cup is the one you are present for.'],
-              ].map(([number, title, copy]) => (
-                <div className="ritual-row" key={number}>
-                  <span className="ritual-number">{number}</span>
-                  <div><h3>{title}</h3><p>{copy}</p></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="section origin-section" id="origin">
-        <div className="origin-layout">
-          <div>
-            <span className="eyebrow field-marker">Where it begins / 02</span>
-            <h2>Follow the<br /><span>flavour.</span></h2>
-          </div>
-          <div className="origin-copy">
-            <p>We look for coffees with a shape to them: something bright at first contact, something warm underneath, a finish that stays around for another sip. Nothing engineered for speed, and nothing lost in the roast.</p>
-            <div className="origin-specs">
-              <div className="origin-spec"><small>roast window</small><strong>light / steady</strong></div>
-              <div className="origin-spec"><small>format</small><strong>250g whole bean</strong></div>
-              <div className="origin-spec"><small>release</small><strong>every other thursday</strong></div>
-              <div className="origin-spec"><small>intention</small><strong>drink slowly</strong></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="section packaging" id="future">
-        <div>
-          <span className="eyebrow field-marker">Objects for the counter / 03</span>
-          <h2>Things<br />that hold<br /><span>time.</span></h2>
-        </div>
-        <div className="packaging-copy">
-          <p>The coffee is only the beginning. We are working on a small family of useful things for the counter: thick paper, dark wood, clear glass — objects that make one more minute feel considered.</p>
-          <div className="packaging-card" aria-label="Packaging studies in thick paper, dark wood and clear glass">
-            <div className="package-wood" aria-hidden="true" />
-            <div className="package-glass" aria-hidden="true"><span>R.01</span></div>
-            <div className="package-sketch"><span>NOT / coffee</span></div>
-          </div>
-          <button className="field-link" onClick={() => setToast('Object note queued for the next dispatch')} data-testid="button-packaging-notes">
-            Read object note <ArrowRight size={13} />
-          </button>
-        </div>
-      </section>
-
-      <section className="section" id="journal">
-        <div className="journal-head section-rule">
-          <h2>Counter notes</h2><span className="eyebrow">observations / 03 files</span>
-        </div>
-        <div className="journal-grid">
-          <article className="journal-item">
-            <span className="journal-tag">NOTE 01 / WATER</span>
-            <h3>Good water is half the recipe.</h3>
-            <p>A short note on minerals, temperature, and why your tap might be the best place to start.</p>
-          </article>
-          <article className="journal-item">
-            <span className="journal-tag">NOTE 02 / TIME</span>
-            <h3>Morning, without the performance.</h3>
-            <p>There is no right way to take your time.</p>
-          </article>
-          <article className="journal-item">
-            <span className="journal-tag">NOTE 03 / FORM</span>
-            <h3>Notes on the object.</h3>
-            <p>Packaging studies from our table to yours.</p>
-          </article>
-        </div>
-      </section>
-
-      <section className="section newsletter" id="dispatch">
-        <h2>Enter the<br /><span>dispatch.</span></h2>
-        <div className="newsletter-copy">
-          {signedUp ? <span className="signup-success" data-testid="status-signup-success"><Check size={13} /> Dispatch confirmed.</span> : (
-            <>
-              <p>New releases, field notes, and objects in progress. No noise. We write when there is something worth putting on the line.</p>
-              <form className="email-form" onSubmit={submitSignup}>
-                <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="your email address" aria-label="Email address" data-testid="input-email" />
-                <button type="submit" data-testid="button-signup">Join dispatch</button>
-              </form>
-            </>
+              <p className="text-3xl md:text-4xl font-black tracking-tight text-[#d94f2b]">
+                received.
+              </p>
+              <p className="font-serif italic text-white/50">
+                thanks for moving with intent.
+              </p>
+            </motion.div>
           )}
-        </div>
-      </section>
-
-      <footer className="footer">
-        <span>© 2024 NOT coffee / a notrehab object</span>
-        <a href="#top" data-testid="link-back-top">Back to entry <ArrowUp size={12} aria-hidden="true" /></a>
-        <span>Move with intent.</span>
-      </footer>
-
-      {cartOpen && <CartDrawer items={bag} total={total} onClose={() => setCartOpen(false)} onRemove={removeFromBag} onChangeQuantity={changeQuantity} onCheckout={() => setToast('Checkout is being prepared for the next release')} />}
-      {toast && <div className="toast-note" role="status" data-testid="status-toast">{toast}</div>}
-    </main>
+        </AnimatePresence>
+      </div>
+    </section>
   );
 }
 
-function ProductCard({ product, featured, onAdd }: { product: Product; featured: boolean; onAdd: (product: Product) => void }) {
-  return (
-    <article className={`product-card ${featured ? 'featured' : ''} product-${product.id}`} data-release={product.release} data-testid={`card-product-${product.id}`}>
-      <div className="bag-wrap">
-        <div className="bag">
-          <span className="bag-roast">{product.process}<br />roasted weekly</span>
-          <div className="bag-label">
-            <strong>NOT / coffee</strong>
-            <span>{product.name}</span>
-            <small>{product.origin}</small>
-          </div>
-          <span className="bag-weight">250g / 01</span>
-        </div>
-      </div>
-      <div className="product-info">
-        <div><div className="product-name">{product.name}</div><div className="product-note">{product.note}</div></div>
-        <span className="product-price">${product.price}.00</span>
-      </div>
-      <button className="add-button" onClick={() => onAdd(product)} aria-label={`Add ${product.name} to bag`} data-testid={`button-add-${product.id}`}>
-        Acquire object <Plus size={13} strokeWidth={1.5} />
-      </button>
-    </article>
-  );
-}
+function CatalogSlide({
+  product,
+  index,
+  total,
+  onAdd,
+}: {
+  product: (typeof products)[number];
+  index: number;
+  total: number;
+  onAdd: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [revealed, setRevealed] = useState(false);
+  const { scrollYProgress } = useScroll({
+    target: ref,
+    offset: ["start end", "end start"],
+  });
 
-function CartDrawer({ items, total, onClose, onRemove, onChangeQuantity, onCheckout }: { items: BagItem[]; total: number; onClose: () => void; onRemove: (id: string) => void; onChangeQuantity: (id: string, delta: number) => void; onCheckout: () => void }) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  const y = useTransform(scrollYProgress, [0, 1], [80, -80]);
+  const scale = useTransform(scrollYProgress, [0.2, 0.8], [0.92, 1]);
+  const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0.3, 1, 1, 0.3]);
+
+  const panelPositions = [
+    { top: "12%", left: "6%" },
+    { top: "30%", right: "5%" },
+    { bottom: "14%", left: "8%" },
+    { bottom: "28%", right: "10%" },
+  ];
 
   return (
-    <>
-      <button className="cart-drawer-backdrop" onClick={onClose} aria-label="Close shopping bag" data-testid="button-close-backdrop" />
-      <aside className="cart-drawer" id="shopping-bag" aria-label="Shopping bag" aria-modal="true" role="dialog">
-        <div className="drawer-top">
-          <h2>Your bag <span className="eyebrow">({items.length})</span></h2>
-          <button className="close-button" onClick={onClose} aria-label="Close shopping bag" data-testid="button-close-bag"><X size={18} strokeWidth={1.4} /></button>
-        </div>
-        {items.length === 0 ? (
-          <div className="drawer-empty"><ShoppingBag size={22} strokeWidth={1} /><p>Bag is clear.</p><span className="small-note">Activate the collection to acquire an object.</span></div>
-        ) : (
-          <div>
-            {items.map((item) => (
-              <div className="drawer-item" key={item.id} data-testid={`row-bag-item-${item.id}`}>
-                <div className="drawer-swatch">NOT / {item.release}</div>
-                <div>
-                  <h3>{item.name}</h3>
-                  <p>${item.price}.00 · {item.quantity} ×</p>
-                  <div className="flex items-center gap-2 mt-3">
-                    <button className="remove-button" onClick={() => onChangeQuantity(item.id, -1)} aria-label={`Decrease ${item.name}`} data-testid={`button-decrease-${item.id}`}><Minus size={12} /></button>
-                    <span className="mono text-[.63rem]">{item.quantity}</span>
-                    <button className="remove-button" onClick={() => onChangeQuantity(item.id, 1)} aria-label={`Increase ${item.name}`} data-testid={`button-increase-${item.id}`}><Plus size={12} /></button>
-                  </div>
-                </div>
-                <button className="remove-button" onClick={() => onRemove(item.id)} aria-label={`Remove ${item.name} from bag`} data-testid={`button-remove-${item.id}`}>Remove</button>
+    <section
+      ref={ref}
+      className="min-h-screen flex items-center justify-center relative overflow-hidden"
+      style={{ background: index % 2 === 0 ? "#f2f0ea" : "#f8f4eb" }}
+    >
+      <div className="absolute right-8 top-8 text-[18vw] font-black text-[#12110f]/5 leading-none select-none">
+        {String(index + 1).padStart(2, "0")}
+      </div>
+
+      <AnimatePresence>
+        {revealed &&
+          product.info.map((info, i) => (
+            <motion.div
+              key={info.label}
+              initial={{ opacity: 0, scale: 0.7, rotate: i % 2 === 0 ? -6 : 6 }}
+              animate={{ opacity: 1, scale: 1, rotate: 0 }}
+              exit={{ opacity: 0, scale: 0.7 }}
+              transition={{ duration: 0.7, delay: i * 0.12, ease: [0.23, 1, 0.32, 1] }}
+              className="absolute z-20 w-40 md:w-52 bg-[#f2f0ea] border border-[#12110f] p-4 shadow-[8px_10px_0_rgba(18,17,15,0.12)]"
+              style={panelPositions[i % panelPositions.length]}
+            >
+              <div className="text-[9px] tracking-[3px] font-mono text-[#d94f2b] uppercase mb-2">
+                {info.label}
               </div>
-            ))}
+              <div className="text-xl font-black text-[#12110f] leading-none">
+                {info.value}
+              </div>
+            </motion.div>
+          ))}
+      </AnimatePresence>
+
+      <div className="max-w-7xl w-full px-8 md:px-16 grid md:grid-cols-2 gap-12 items-center">
+        <motion.div style={{ y, scale, opacity }} className="relative">
+          <motion.button
+            onClick={() => setRevealed((r) => !r)}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            transition={{ duration: 1.2, ease: [0.23, 1, 0.32, 1] }}
+            className="block w-full cursor-pointer bg-transparent p-0 border-0 text-left"
+            aria-label={`Toggle info for ${product.name}`}
+          >
+            <img
+              src={product.image}
+              alt={product.name}
+              className="w-full aspect-[4/5] object-cover shadow-2xl"
+            />
+          </motion.button>
+          <div className="absolute -bottom-4 -left-4 w-24 h-24 bg-[#d94f2b] mix-blend-multiply opacity-20" />
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, margin: "-20%" }}
+          transition={{ duration: 1.2, ease: [0.23, 1, 0.32, 1] }}
+          className="space-y-6"
+        >
+          <div className="uppercase tracking-[4px] text-xs font-mono text-[#d94f2b]">
+            {product.origin}
           </div>
-        )}
-        {items.length > 0 && (
-          <div className="drawer-bottom">
-            <div className="total-row"><span>Total</span><span data-testid="text-cart-total">${total}.00</span></div>
-            <button className="checkout-button" onClick={onCheckout} data-testid="button-checkout">Continue to checkout <ArrowRight size={14} className="inline ml-2" /></button>
+          <h2 className="text-5xl md:text-7xl font-black leading-none tracking-tighter text-[#12110f]">
+            {product.name}
+          </h2>
+          <p className="text-2xl font-serif italic text-[#5c4033]">{product.note}</p>
+          <p className="font-serif italic text-[#12110f]/50 text-lg">
+            “{product.statement}”
+          </p>
+
+          <div className="flex items-center gap-8 pt-4">
+            <div className="text-4xl font-black text-[#12110f]">${product.price}</div>
+            <button
+              onClick={onAdd}
+              className="px-10 py-5 bg-[#12110f] text-white text-xs tracking-widest font-mono hover:bg-[#d94f2b] transition-colors"
+            >
+              ADD TO BAG
+            </button>
           </div>
-        )}
-      </aside>
-    </>
+
+          <div className="text-[10px] tracking-[4px] font-mono text-[#12110f]/40 uppercase pt-4">
+            {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} — click the
+            object to inspect
+          </div>
+        </motion.div>
+      </div>
+    </section>
   );
 }
-
-export default App;
