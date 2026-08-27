@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowDown, ShoppingBag } from 'lucide-react';
 
 const products = [
@@ -73,13 +73,29 @@ export default function App() {
   const [bag, setBag] = useState<number[]>([]);
   // 0 rest → 1 teaser → 2 merge into ! (top) → 3 ! falls to Coffee → 4 catalog
   const [ritual, setRitual] = useState(0);
-  const catalogRef = useRef<HTMLDivElement>(null);
   const heroRef = useRef<HTMLElement>(null);
   const wheelLock = useRef(false);
   const bangSettledRef = useRef(false);
   const [bangSettled, setBangSettled] = useState(false);
 
   const addToBag = (id: number) => setBag((b) => [...b, id]);
+
+  // Catalog paging — same "one small scroll or click anywhere" as the hero.
+  // Pages: product 0,1,2 then feedback (index 3).
+  const [catalogIndex, setCatalogIndex] = useState(0);
+  const catalogWheelLock = useRef(false);
+  // Direction of the last page change: 1 = forward (page down), -1 = back (page up)
+  const [catalogDir, setCatalogDir] = useState(1);
+
+  const advanceCatalog = useCallback(() => {
+    setCatalogDir(1);
+    setCatalogIndex((i) => Math.min(i + 1, products.length));
+  }, []);
+
+  const backCatalog = useCallback(() => {
+    setCatalogDir(-1);
+    setCatalogIndex((i) => Math.max(i - 1, 0));
+  }, []);
 
   useEffect(() => {
     if (ritual >= 4) setPhase(1);
@@ -181,23 +197,27 @@ export default function App() {
             ))}
 
             <div className="text-center z-10 w-full px-6 pointer-events-none">
-              <p className="mb-8 text-xs tracking-[6px] font-mono text-[#d94f2b] uppercase">
+              <p className="mb-8 text-sm tracking-[6px] font-mono text-[#d94f2b] uppercase">
                 Move with intent
               </p>
 
               <div
                 className="relative mx-auto font-black tracking-[-0.08em] text-[#12110f]"
                 style={{
-                  fontSize: "clamp(2.6rem, 12vw, 8.5rem)",
+                  fontSize: "clamp(3.1rem, 13.5vw, 9.6rem)",
                   lineHeight: 0.78,
                   width: "9.2em",
                   height: "1.78em",
                 }}
               >
-                {/* LEFT track — clips at shared line. NOT rests on the far left. */}
+                {/* LEFT track — clips at shared line only during the merge. NOT rests on the far left. */}
                 <div
-                  className="absolute left-0 top-0 z-[1] overflow-hidden"
-                  style={{ width: BRAND_CLIP, height: "0.86em" }}
+                  className="absolute left-0 top-0 z-[1]"
+                  style={{
+                    width: BRAND_CLIP,
+                    height: "0.86em",
+                    overflow: merging ? "hidden" : "visible",
+                  }}
                 >
                   <motion.span
                     initial={{ opacity: 0, x: "0.6em" }}
@@ -232,13 +252,14 @@ export default function App() {
                   </motion.span>
                 </div>
 
-                {/* RIGHT track — same clip line. REHAB starts inset from the far right. */}
+                {/* RIGHT track — same clip line, but only clips during the merge. REHAB starts inset from the far right. */}
                 <div
-                  className="absolute top-0 z-[1] overflow-hidden"
+                  className="absolute top-0 z-[1]"
                   style={{
                     left: BRAND_CLIP,
                     width: `calc(100% - ${BRAND_CLIP})`,
                     height: "0.86em",
+                    overflow: merging ? "hidden" : "visible",
                   }}
                 >
                   <motion.span
@@ -292,20 +313,20 @@ export default function App() {
               <motion.p
                 animate={{ opacity: bangSettled ? 1 : 0 }}
                 transition={{ duration: 0.5 }}
-                className="mt-8 text-sm tracking-[8px] font-mono text-[#12110f]/50 uppercase"
+                className="mt-8 text-base tracking-[8px] font-mono text-[#12110f]/50 uppercase"
               >
                 ! Coffee — the signal remains
               </motion.p>
             </div>
 
-            <div className="absolute bottom-16 flex flex-col items-center gap-3 text-xs tracking-[4px] font-mono text-[#12110f]/70 pointer-events-none">
+            <div className="absolute bottom-16 flex flex-col items-center gap-3 text-sm tracking-[4px] font-mono text-[#12110f]/70 pointer-events-none">
               <motion.span
                 animate={{ y: [0, 8, 0] }}
                 transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
               >
-                <ArrowDown size={18} />
+                <ArrowDown size={22} />
               </motion.span>
-              <span className="text-center text-[9px] tracking-[3px] opacity-70 uppercase">
+              <span className="text-center text-[11px] tracking-[3px] opacity-70 uppercase">
                 {hint}
               </span>
             </div>
@@ -328,28 +349,47 @@ export default function App() {
                 }}
                 className="text-[#12110f]/60 hover:text-[#d94f2b] transition-colors"
               >
-                ← RITUAL
+              ← RITUAL
               </button>
               <span className="flex items-center gap-2 text-[#12110f]">
                 <ShoppingBag size={16} /> {bag.length}
               </span>
             </div>
 
-            <div ref={catalogRef} className="relative">
-              {products.map((product, index) => (
-                <CatalogSlide
-                  key={product.id}
-                  product={product}
-                  index={index}
-                  total={products.length}
-                  onAdd={() => addToBag(product.id)}
-                />
-              ))}
-              <FeedbackSlide />
+            {/* Paged catalog — one slide at a time, advance on small scroll or click */}
+            <div
+              className="relative h-screen overflow-hidden"
+              onWheel={(e) => {
+                if (catalogWheelLock.current) return;
+                if (Math.abs(e.deltaY) < 10) return;
+                catalogWheelLock.current = true;
+                if (e.deltaY > 0) advanceCatalog();
+                else backCatalog();
+                window.setTimeout(() => {
+                  catalogWheelLock.current = false;
+                }, 520);
+              }}
+            >
+              <AnimatePresence mode="sync" custom={catalogDir}>
+                {catalogIndex < products.length ? (
+                  <CatalogSlide
+                    key={products[catalogIndex].id}
+                    product={products[catalogIndex]}
+                    index={catalogIndex}
+                    total={products.length}
+                    dir={catalogDir}
+                    onAdd={() => addToBag(products[catalogIndex].id)}
+                    onAdvance={advanceCatalog}
+                    onBack={backCatalog}
+                  />
+                ) : (
+                  <FeedbackSlide key="feedback" dir={catalogDir} onBack={backCatalog} />
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 text-[10px] tracking-[4px] font-mono text-[#12110f]/50 uppercase">
-              Scroll — the catalog is the scroll
+              scroll — one small scroll to move
             </div>
           </motion.div>
         )}
@@ -414,14 +454,71 @@ function MergeFallBang({
   );
 }
 
-function FeedbackSlide() {
+/**
+ * The "!!" mark drawn as two exclamation marks whose dots blink like eyes.
+ * When `blink` is true, the dots squash closed (like eyelids) and reopen.
+ */
+function BlinkingBangs({ blink }: { blink: boolean }) {
+  return (
+    <span className="inline-flex items-start">
+      {[0, 1].map((i) => (
+        <span key={i} className="relative inline-block leading-none">
+          <span aria-hidden>!</span>
+          {/* the dot — blinks like an eye */}
+          <motion.span
+            className="absolute left-1/2 -translate-x-1/2 block bg-current"
+            style={{ bottom: "0.04em", width: "0.16em", height: "0.16em", borderRadius: "50%" }}
+            animate={
+              blink
+                ? { scaleY: 0.08, opacity: 0.6, transition: { duration: 0.12, ease: "easeIn" } }
+                : { scaleY: 1, opacity: 1, transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] } }
+            }
+          />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function FeedbackSlide({ onBack, dir }: { onBack?: () => void; dir?: number }) {
   const [note, setNote] = useState("");
   const [sent, setSent] = useState(false);
+  // Blink the "!!" dots like eyes when the user scrolls on this last slide.
+  const [blink, setBlink] = useState(false);
+  const blinkLock = useRef(false);
+  // Capture the direction once at mount time so the exit matches the entry
+  // direction even if the user reverses direction while on this slide.
+  const dirRef = useRef(dir ?? 1);
+  const d = dirRef.current;
+  // Directional fan: forward slides in from the right, back slides in from the left.
+  const fromX = d > 0 ? 120 : -120;
+  const toX = d > 0 ? -120 : 120;
+
+  const triggerBlink = () => {
+    if (blinkLock.current) return;
+    blinkLock.current = true;
+    setBlink(true);
+    window.setTimeout(() => {
+      setBlink(false);
+      blinkLock.current = false;
+    }, 900);
+  };
 
   return (
-    <section className="min-h-screen flex items-center justify-center relative overflow-hidden bg-[#12110f] text-[#f2f0ea] px-8">
-      <div className="absolute right-8 top-8 text-[18vw] font-black text-white/5 leading-none select-none">
-        !!
+    <motion.section
+      initial={{ opacity: 0, x: fromX, rotateY: d > 0 ? -14 : 14, scale: 0.96 }}
+      animate={{ opacity: 1, x: 0, rotateY: 0, scale: 1 }}
+      exit={{ opacity: 0, x: toX, rotateY: d > 0 ? 14 : -14, scale: 0.96 }}
+      transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+      style={{ transformPerspective: 1200 }}
+      className="absolute inset-0 flex items-center justify-center overflow-hidden bg-[#12110f] text-[#f2f0ea] px-8"
+      onWheel={(e) => {
+        if (Math.abs(e.deltaY) < 10) return;
+        triggerBlink();
+      }}
+    >
+      <div className="absolute right-8 top-8 text-[18vw] font-black text-white/5 leading-none select-none pointer-events-none">
+        <BlinkingBangs blink={blink} />
       </div>
 
       <div className="max-w-2xl w-full space-y-10 relative z-10">
@@ -489,7 +586,68 @@ function FeedbackSlide() {
           )}
         </AnimatePresence>
       </div>
-    </section>
+
+      {onBack && (
+        <button
+          onClick={onBack}
+          className="absolute bottom-8 left-8 text-[10px] tracking-[4px] font-mono text-white/40 hover:text-[#d94f2b] transition-colors uppercase"
+        >
+          ← prev
+        </button>
+      )}
+    </motion.section>
+  );
+}
+
+/**
+ * Flip-clock / odometer number. When `value` changes, the old digit flips
+ * down (rotates away) and the new digit flips in from the top — like a
+ * split-flap clock. Used for the catalog page numbers.
+ */
+function FlipNumber({ value }: { value: number }) {
+  const [display, setDisplay] = useState(value);
+  const [flipping, setFlipping] = useState(false);
+  const prevRef = useRef(value);
+
+  useEffect(() => {
+    if (prevRef.current === value) return;
+    prevRef.current = value;
+    setFlipping(true);
+    // Flip the top half down, then swap the digit and flip the bottom half in.
+    const t = window.setTimeout(() => {
+      setDisplay(value);
+      setFlipping(false);
+    }, 380);
+    return () => window.clearTimeout(t);
+  }, [value]);
+
+  const text = String(display).padStart(2, "0");
+
+  return (
+    <div className="relative inline-block overflow-hidden leading-none">
+      {/* static current digit */}
+      <span
+        className="block transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{
+          transform: flipping ? "rotateX(90deg)" : "rotateX(0deg)",
+          transformOrigin: "center bottom",
+        }}
+      >
+        {text}
+      </span>
+      {/* incoming digit flips in from the top */}
+      <span
+        aria-hidden
+        className="absolute inset-0 block transition-transform duration-[380ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        style={{
+          transform: flipping ? "rotateX(0deg)" : "rotateX(-90deg)",
+          transformOrigin: "center top",
+          opacity: flipping ? 1 : 0,
+        }}
+      >
+        {String(value).padStart(2, "0")}
+      </span>
+    </div>
   );
 }
 
@@ -498,22 +656,25 @@ function CatalogSlide({
   index,
   total,
   onAdd,
+  onAdvance,
+  onBack,
+  dir,
 }: {
   product: (typeof products)[number];
   index: number;
   total: number;
   onAdd: () => void;
+  onAdvance: () => void;
+  onBack: () => void;
+  dir?: number;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
   const [revealed, setRevealed] = useState(false);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ["start end", "end start"],
-  });
 
-  const y = useTransform(scrollYProgress, [0, 1], [80, -80]);
-  const scale = useTransform(scrollYProgress, [0.2, 0.8], [0.92, 1]);
-  const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0.3, 1, 1, 0.3]);
+  // Capture the direction once at mount time so the exit always matches the
+  // direction this slide entered with — even if the user reverses direction
+  // while this slide is on screen.
+  const dirRef = useRef(dir ?? 1);
+  const d = dirRef.current;
 
   const panelPositions = [
     { top: "12%", left: "6%" },
@@ -522,14 +683,25 @@ function CatalogSlide({
     { bottom: "28%", right: "10%" },
   ];
 
+  // Directional fan: forward (page down) slides in from the right,
+  // back (page up) slides in from the left.
+  const fromX = d > 0 ? 120 : -120;
+  const toX = d > 0 ? -120 : 120;
+
   return (
-    <section
-      ref={ref}
-      className="min-h-screen flex items-center justify-center relative overflow-hidden"
-      style={{ background: index % 2 === 0 ? "#f2f0ea" : "#f8f4eb" }}
+    <motion.section
+      initial={{ opacity: 0, x: fromX, rotateY: d > 0 ? -14 : 14, scale: 0.96 }}
+      animate={{ opacity: 1, x: 0, rotateY: 0, scale: 1 }}
+      exit={{ opacity: 0, x: toX, rotateY: d > 0 ? 14 : -14, scale: 0.96 }}
+      transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+      style={{
+        transformPerspective: 1200,
+        background: index % 2 === 0 ? "#f2f0ea" : "#f8f4eb",
+      }}
+      className="absolute inset-0 flex items-center justify-center overflow-hidden"
     >
       <div className="absolute right-8 top-8 text-[18vw] font-black text-[#12110f]/5 leading-none select-none">
-        {String(index + 1).padStart(2, "0")}
+        <FlipNumber value={index + 1} />
       </div>
 
       <AnimatePresence>
@@ -555,7 +727,7 @@ function CatalogSlide({
       </AnimatePresence>
 
       <div className="max-w-7xl w-full px-8 md:px-16 grid md:grid-cols-2 gap-12 items-center">
-        <motion.div style={{ y, scale, opacity }} className="relative">
+        <motion.div className="relative">
           <motion.button
             onClick={() => setRevealed((r) => !r)}
             whileHover={{ scale: 1.02 }}
@@ -575,8 +747,7 @@ function CatalogSlide({
 
         <motion.div
           initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-20%" }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2, ease: [0.23, 1, 0.32, 1] }}
           className="space-y-6"
         >
@@ -601,12 +772,23 @@ function CatalogSlide({
             </button>
           </div>
 
-          <div className="text-[10px] tracking-[4px] font-mono text-[#12110f]/40 uppercase pt-4">
-            {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")} — click the
-            object to inspect
+          <div className="flex items-center gap-8 pt-4 text-[10px] tracking-[4px] font-mono text-[#12110f]/40 uppercase">
+            <button onClick={onBack} className="hover:text-[#d94f2b] transition-colors">
+              ← prev
+            </button>
+            <span>
+              {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
+            </span>
+            <button onClick={onAdvance} className="hover:text-[#d94f2b] transition-colors">
+              next →
+            </button>
+          </div>
+
+          <div className="text-[10px] tracking-[4px] font-mono text-[#12110f]/40 uppercase pt-2">
+            click the object to inspect · scroll to move
           </div>
         </motion.div>
       </div>
-    </section>
+    </motion.section>
   );
 }
